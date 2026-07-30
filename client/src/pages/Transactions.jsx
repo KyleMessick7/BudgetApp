@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Trash2, Edit3, Tag } from 'lucide-react';
+import { Search, Filter, Plus, Trash2, Edit3, Tag, Flag } from 'lucide-react';
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -21,7 +22,7 @@ export default function Transactions() {
   useEffect(() => {
     fetchCategories();
     fetchTransactions();
-  }, [search, selectedCategory]);
+  }, [search, selectedCategory, flaggedOnly]);
 
   const fetchCategories = async () => {
     try {
@@ -38,6 +39,7 @@ export default function Transactions() {
       setLoading(true);
       let url = `/api/transactions?search=${encodeURIComponent(search)}`;
       if (selectedCategory) url += `&category_id=${selectedCategory}`;
+      if (flaggedOnly) url += `&flagged=1`;
 
       const res = await fetch(url);
       const data = await res.json();
@@ -61,6 +63,21 @@ export default function Transactions() {
       }
     } catch (err) {
       console.error('Failed to update transaction category:', err);
+    }
+  };
+
+  const handleToggleFlag = async (tx) => {
+    try {
+      const res = await fetch(`/api/transactions/${tx.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flagged: !tx.flagged }),
+      });
+      if (res.ok) {
+        fetchTransactions();
+      }
+    } catch (err) {
+      console.error('Failed to toggle transaction flag:', err);
     }
   };
 
@@ -104,7 +121,7 @@ export default function Transactions() {
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '800' }}>Transactions & Purchases</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
-            View, search, and recategorize all synced bank transactions
+            View, search, recategorize, and flag transactions for review
           </p>
         </div>
 
@@ -116,7 +133,7 @@ export default function Transactions() {
 
       {/* Filter and Search Bar */}
       <div className="card" style={{ padding: '16px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
             <Search size={18} style={{ position: 'absolute', left: '14px', top: '12px', color: '#9ca3af' }} />
             <input
@@ -143,6 +160,19 @@ export default function Transactions() {
               ))}
             </select>
           </div>
+
+          <button 
+            className="btn btn-secondary" 
+            style={{ 
+              background: flaggedOnly ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+              borderColor: flaggedOnly ? '#f59e0b' : 'var(--border-color)',
+              color: flaggedOnly ? '#fbbf24' : 'var(--text-main)'
+            }}
+            onClick={() => setFlaggedOnly(!flaggedOnly)}
+          >
+            <Flag size={16} color={flaggedOnly ? '#f59e0b' : 'currentColor'} />
+            <span>{flaggedOnly ? 'Showing Flagged' : 'Flagged Only'}</span>
+          </button>
         </div>
       </div>
 
@@ -155,7 +185,7 @@ export default function Transactions() {
                 <th>Date</th>
                 <th>Description</th>
                 <th>Category</th>
-                <th>Channel / Type</th>
+                <th>Channel / Status</th>
                 <th style={{ textAlign: 'right' }}>Amount</th>
                 <th style={{ textAlign: 'center' }}>Actions</th>
               </tr>
@@ -175,10 +205,17 @@ export default function Transactions() {
                 </tr>
               ) : (
                 transactions.map((tx) => (
-                  <tr key={tx.id}>
+                  <tr key={tx.id} style={{ background: tx.flagged ? 'rgba(245, 158, 11, 0.05)' : 'transparent' }}>
                     <td style={{ color: '#9ca3af', fontSize: '13px', whiteSpace: 'nowrap' }}>{tx.date}</td>
                     <td>
-                      <div style={{ fontWeight: '600', color: '#fff' }}>{tx.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ fontWeight: '600', color: '#fff' }}>{tx.name}</div>
+                        {tx.flagged === 1 && (
+                          <span className="badge badge-yellow" style={{ fontSize: '11px', padding: '2px 8px' }}>
+                            <Flag size={10} style={{ marginRight: '2px' }} /> Flagged for Review
+                          </span>
+                        )}
+                      </div>
                       {tx.merchant_name && tx.merchant_name !== tx.name && (
                         <div style={{ fontSize: '12px', color: '#9ca3af' }}>{tx.merchant_name}</div>
                       )}
@@ -207,12 +244,28 @@ export default function Transactions() {
                       {tx.amount < 0 ? `+${formatCurrency(Math.abs(tx.amount))}` : `-${formatCurrency(tx.amount)}`}
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <button 
-                        onClick={() => handleDelete(tx.id)}
-                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
+                        <button 
+                          onClick={() => handleToggleFlag(tx)}
+                          title={tx.flagged ? 'Unflag transaction' : 'Flag for review'}
+                          style={{ 
+                            background: 'none', 
+                            border: 'none', 
+                            color: tx.flagged ? '#f59e0b' : '#6b7280', 
+                            cursor: 'pointer', 
+                            padding: '4px' 
+                          }}
+                        >
+                          <Flag size={16} fill={tx.flagged ? '#f59e0b' : 'none'} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(tx.id)}
+                          title="Delete transaction"
+                          style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -278,9 +331,9 @@ export default function Transactions() {
                   value={newTx.category_id}
                   onChange={(e) => setNewTx({ ...newTx, category_id: e.target.value })}
                 >
-                  <option value="">Select Category</option>
+                  <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>Select Category</option>
                   {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
+                    <option key={c.id} value={c.id} style={{ color: '#000000', backgroundColor: '#ffffff' }}>
                       {c.icon} {c.name}
                     </option>
                   ))}

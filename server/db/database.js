@@ -12,7 +12,7 @@ const db = new Database(dbPath);
 db.pragma('foreign_keys = ON');
 
 export function initDatabase() {
-  // 1. Plaid items table (connected bank accounts credentials metadata)
+  // 1. Plaid items table
   db.exec(`
     CREATE TABLE IF NOT EXISTS plaid_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,7 +25,7 @@ export function initDatabase() {
     );
   `);
 
-  // 2. Accounts table (Checking, Savings, Credit Cards)
+  // 2. Accounts table
   db.exec(`
     CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +44,7 @@ export function initDatabase() {
     );
   `);
 
-  // 3. Categories table (Monthly spending categories with targets)
+  // 3. Categories table
   db.exec(`
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,10 +69,23 @@ export function initDatabase() {
       payment_channel TEXT,
       pending INTEGER DEFAULT 0,
       notes TEXT,
+      flagged INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
     );
   `);
+
+  // Migration check: Add flagged column if missing on existing databases
+  try {
+    const tableInfo = db.prepare(`PRAGMA table_info(transactions)`).all();
+    const hasFlagged = tableInfo.some(col => col.name === 'flagged');
+    if (!hasFlagged) {
+      db.exec(`ALTER TABLE transactions ADD COLUMN flagged INTEGER DEFAULT 0;`);
+      console.log('Added "flagged" column to transactions table.');
+    }
+  } catch (err) {
+    console.error('Error during migration check for flagged column:', err.message);
+  }
 
   // Seed default categories if empty
   const categoryCount = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;

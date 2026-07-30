@@ -63,6 +63,25 @@ router.get('/summary', (req, res) => {
   }
 });
 
+// Get transactions for a specific category sorted from largest to smallest amount
+router.get('/category-transactions/:categoryId', (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+
+    const transactions = db.prepare(`
+      SELECT t.id, t.name, t.merchant_name, t.amount, t.date, t.payment_channel, t.flagged
+      FROM transactions t
+      WHERE t.category_id = ? AND t.amount > 0 AND t.date LIKE ?
+      ORDER BY t.amount DESC, t.date DESC
+    `).all(categoryId, `${currentMonthPrefix}%`);
+
+    res.json(transactions);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch category transactions', details: error.message });
+  }
+});
+
 // Get accounts list
 router.get('/accounts', (req, res) => {
   try {

@@ -74,12 +74,19 @@ router.put('/:id', (req, res) => {
   }
 });
 
-// Delete category
+// Delete category (protect system categories)
 router.delete('/:id', (req, res) => {
   try {
     const { id } = req.params;
+    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+    
+    if (!cat) return res.status(404).json({ error: 'Category not found' });
+    if (cat.name === 'Income' || cat.name === 'Uncategorized') {
+      return res.status(400).json({ error: 'System categories cannot be deleted.' });
+    }
+
     db.prepare('DELETE FROM categories WHERE id = ?').run(id);
-    res.json({ success: true, message: 'Category deleted' });
+    res.json({ success: true, message: 'Category deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete category', details: error.message });
   }

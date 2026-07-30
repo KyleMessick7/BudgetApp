@@ -6,7 +6,7 @@ const router = express.Router();
 // Get transactions with optional search, category filter, flagged filter, and pagination
 router.get('/', (req, res) => {
   try {
-    const { search, category_id, account_id, flagged, limit = 100, offset = 0 } = req.query;
+    const { search, category_id, account_id, flagged, limit = 5000, offset = 0 } = req.query;
 
     let query = `
       SELECT 
@@ -48,7 +48,7 @@ router.get('/', (req, res) => {
 
     const transactions = db.prepare(query).all(...params);
 
-    // Get total count for pagination UI
+    // Get total count for UI header
     const countQuery = `SELECT COUNT(*) as total FROM transactions t WHERE 1=1`;
     const total = db.prepare(countQuery).get().total;
 

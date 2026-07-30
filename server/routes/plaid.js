@@ -45,6 +45,9 @@ router.post('/create-link-token', async (req, res) => {
       user: { client_user_id: 'user_budget_app' },
       client_name: 'VaultBudget Personal',
       products: ['transactions'],
+      transactions: {
+        days_requested: 730
+      },
       country_codes: ['US'],
       language: 'en',
     };
@@ -145,7 +148,6 @@ async function syncTransactionsForItem(itemId, accessToken) {
     const categories = db.prepare('SELECT id, name FROM categories').all();
     const uncategorizedId = categories.find(c => c.name === 'Uncategorized')?.id || 1;
 
-    // Preserves custom categories and notes during sync updates
     const insertTx = db.prepare(`
       INSERT INTO transactions (plaid_transaction_id, account_id, category_id, amount, date, name, merchant_name, payment_channel, pending)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -221,6 +223,108 @@ router.post('/sync', async (req, res) => {
     res.json({ success: true, message: `Synced ${items.length} accounts successfully.` });
   } catch (error) {
     res.status(500).json({ error: 'Sync failed', details: error.message });
+  }
+});
+
+// 4. Fetch Historical Transactions Endpoint (pulls 90, 180, 365, or 730 days of past purchases)
+router.post('/fetch-historical', async (req, res) => {
+  try {
+    const isMock = getIsMockMode();
+    const days = parseInt(req.body.days) || 365;
+    const items = db.prepare('SELECT * FROM plaid_items').all();
+
+    if (isMock) {
+      return res.json({ success: true, message: 'Mock mode active. Use real Plaid keys for historical bank imports.', importedCount: 0 });
+    }
+
+    const plaidClient = getPlaidClient();
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const endDateStr = endDate.toISOString().split('T')[0];
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    const categories = db.prepare('SELECT id, name FROM categories').all();
+    const uncategorizedId = categories.find(c => c.name === 'Uncategorized')?.id || 1;
+
+    const insertTx = db.prepare(`
+      INSERT INTO transactions (plaid_transaction_id, account_id, category_id, amount, date, name, merchant_name, payment_channel, pending)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(plaid_transaction_id) DO UPDATE SET
+        amount = excluded.amount,
+        pending = excluded.pending,
+        date = excluded.date,
+        merchant_name = excluded.merchant_name
+    `);
+
+    let totalImported = 0;
+
+    for (const item of items) {
+      let hasMore = true;
+      let offset = 0;
+      const countPerPage = 500;
+
+      while (hasMore && offset < 2000) {
+        try {
+          const response = await plaidClient.transactionsGet({
+            access_token: item.access_token,
+            start_date: startDateStr,
+            end_date: endDateStr,
+            options: {
+              count: countPerPage,
+              offset: offset
+            }
+          });
+
+          const fetched = response.data.transactions || [];
+          totalImported += fetched.length;
+
+          for (const t of fetched) {
+            let catId = uncategorizedId;
+            const primaryPlaidCat = t.category ? t.category[0] : '';
+            if (primaryPlaidCat.includes('Food') || primaryPlaidCat.includes('Shops')) {
+              catId = categories.find(c => c.name.includes('Groceries'))?.id || catId;
+            } else if (primaryPlaidCat.includes('Travel') || primaryPlaidCat.includes('Gas')) {
+              catId = categories.find(c => c.name.includes('Transportation'))?.id || catId;
+            } else if (primaryPlaidCat.includes('Payment') || t.amount < 0) {
+              catId = categories.find(c => c.name === 'Income')?.id || catId;
+            }
+
+            insertTx.run(
+              t.transaction_id,
+              t.account_id,
+              catId,
+              t.amount,
+              t.date,
+              t.name,
+              t.merchant_name || t.name,
+              t.payment_channel,
+              t.pending ? 1 : 0
+            );
+          }
+
+          if (fetched.length < countPerPage) {
+            hasMore = false;
+          } else {
+            offset += countPerPage;
+          }
+        } catch (err) {
+          console.error(`Historical fetch error for item ${item.item_id}:`, err?.response?.data || err.message);
+          hasMore = false;
+        }
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Successfully fetched historical transactions from ${startDateStr} to ${endDateStr}.`, 
+      importedCount: totalImported,
+      daysRequested: days 
+    });
+  } catch (error) {
+    console.error('Historical fetch error:', error?.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch historical transactions', details: error.message });
   }
 });
 

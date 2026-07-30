@@ -34,16 +34,19 @@ export default function Transactions() {
     }
   };
 
+  const [totalCount, setTotalCount] = useState(0);
+
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      let url = `/api/transactions?search=${encodeURIComponent(search)}`;
+      let url = `/api/transactions?limit=5000&search=${encodeURIComponent(search)}`;
       if (selectedCategory) url += `&category_id=${selectedCategory}`;
       if (flaggedOnly) url += `&flagged=1`;
 
       const res = await fetch(url);
       const data = await res.json();
       setTransactions(data.transactions || []);
+      setTotalCount(data.total || (data.transactions || []).length);
     } catch (err) {
       console.error('Failed to load transactions:', err);
     } finally {
@@ -121,7 +124,7 @@ export default function Transactions() {
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '800' }}>Transactions & Purchases</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
-            View, search, recategorize, and flag transactions for review
+            Showing {transactions.length} of {totalCount} total saved transactions • Search, recategorize, and flag for review
           </p>
         </div>
 

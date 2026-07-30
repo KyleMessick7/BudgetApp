@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Landmark, CreditCard, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Landmark, CreditCard, ShieldCheck, RefreshCw, Trash2 } from 'lucide-react';
 import PlaidLinkButton from '../components/PlaidLinkButton';
 
 export default function Accounts({ isSyncing, onSync }) {
@@ -23,9 +23,26 @@ export default function Accounts({ isSyncing, onSync }) {
     }
   };
 
+  const handleClearMockData = async () => {
+    if (!window.confirm('Are you sure you want to remove all mock/demo bank accounts and mock transactions? (Your real Plaid connected bank accounts will be kept!).')) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/analytics/clear-mock-data', { method: 'POST' });
+      if (res.ok) {
+        fetchAccounts();
+        if (onSync) onSync();
+      }
+    } catch (err) {
+      console.error('Failed to clear mock data:', err);
+    }
+  };
+
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
   };
+
+  const hasMockAccounts = accounts.some(a => a.item_id && a.item_id.startsWith('mock_'));
 
   return (
     <div>
@@ -37,11 +54,23 @@ export default function Accounts({ isSyncing, onSync }) {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {hasMockAccounts && (
+            <button 
+              className="btn btn-secondary" 
+              style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+              onClick={handleClearMockData}
+            >
+              <Trash2 size={16} />
+              <span>Clear Demo/Mock Data</span>
+            </button>
+          )}
+
           <button className="btn btn-secondary" onClick={onSync} disabled={isSyncing}>
             <RefreshCw size={16} />
             <span>Sync Transactions</span>
           </button>
+
           <PlaidLinkButton onSuccessCallback={fetchAccounts} />
         </div>
       </div>
@@ -53,7 +82,7 @@ export default function Accounts({ isSyncing, onSync }) {
           <Landmark size={48} color="#6366f1" style={{ marginBottom: '16px' }} />
           <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '8px' }}>No Bank Accounts Linked Yet</h2>
           <p style={{ color: '#9ca3af', marginBottom: '24px', maxWidth: '440px', margin: '0 auto 24px auto' }}>
-            Connect your bank accounts securely using Plaid Sandbox or Mock Mode to sync your real purchases.
+            Connect your bank accounts securely using Plaid Sandbox or Production to sync your real purchases.
           </p>
           <PlaidLinkButton onSuccessCallback={fetchAccounts} />
         </div>
@@ -61,8 +90,9 @@ export default function Accounts({ isSyncing, onSync }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
           {accounts.map((acc) => {
             const isCredit = acc.type === 'credit';
+            const isMock = acc.item_id && acc.item_id.startsWith('mock_');
             return (
-              <div key={acc.id} className="card">
+              <div key={acc.id} className="card" style={{ opacity: isMock ? 0.75 : 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{
@@ -81,9 +111,9 @@ export default function Accounts({ isSyncing, onSync }) {
                     </div>
                   </div>
 
-                  <span className="badge badge-green" style={{ textTransform: 'capitalize' }}>
+                  <span className={`badge ${isMock ? 'badge-yellow' : 'badge-green'}`} style={{ textTransform: 'capitalize' }}>
                     <ShieldCheck size={12} />
-                    {acc.subtype || acc.type}
+                    {isMock ? 'Demo Mock' : (acc.subtype || acc.type)}
                   </span>
                 </div>
 

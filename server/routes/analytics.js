@@ -77,4 +77,37 @@ router.get('/accounts', (req, res) => {
   }
 });
 
+// Purge all mock accounts and mock transactions from SQLite
+router.post('/clear-mock-data', (req, res) => {
+  try {
+    // Delete mock transactions
+    db.prepare(`
+      DELETE FROM transactions 
+      WHERE plaid_transaction_id LIKE 'tx_%' 
+         OR plaid_transaction_id LIKE 'mock_%' 
+         OR account_id LIKE 'acc_chk_%' 
+         OR account_id LIKE 'acc_sav_%' 
+         OR account_id LIKE 'acc_crd_%'
+         OR account_id LIKE 'acc_mock_%'
+    `).run();
+
+    // Delete mock accounts
+    db.prepare(`
+      DELETE FROM accounts 
+      WHERE item_id LIKE 'mock_%' 
+         OR plaid_account_id LIKE 'acc_chk_%' 
+         OR plaid_account_id LIKE 'acc_sav_%' 
+         OR plaid_account_id LIKE 'acc_crd_%'
+         OR plaid_account_id LIKE 'acc_mock_%'
+    `).run();
+
+    // Delete mock items
+    db.prepare(`DELETE FROM plaid_items WHERE item_id LIKE 'mock_%'`).run();
+
+    res.json({ success: true, message: 'Mock data purged successfully.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to clear mock data', details: error.message });
+  }
+});
+
 export default router;

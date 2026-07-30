@@ -14,25 +14,20 @@ export default function MonthSelector({ selectedMonth, setSelectedMonth }) {
     const prevDate = new Date(year, month - 1, 1);
     const newY = prevDate.getFullYear();
     const newM = String(prevDate.getMonth() + 1).padStart(2, '0');
-    const newMonthStr = `${newY}-${newM}`;
-    setSelectedMonth(newMonthStr);
-    try { localStorage.setItem('selectedMonth', newMonthStr); } catch (e) {}
+    setSelectedMonth(`${newY}-${newM}`);
   };
 
   const handleNextMonth = () => {
     const nextDate = new Date(year, month + 1, 1);
     const newY = nextDate.getFullYear();
     const newM = String(nextDate.getMonth() + 1).padStart(2, '0');
-    const newMonthStr = `${newY}-${newM}`;
-    setSelectedMonth(newMonthStr);
-    try { localStorage.setItem('selectedMonth', newMonthStr); } catch (e) {}
+    setSelectedMonth(`${newY}-${newM}`);
   };
 
   const handleDirectSelect = (e) => {
     const val = e.target.value;
     if (val) {
       setSelectedMonth(val);
-      try { localStorage.setItem('selectedMonth', val); } catch (e) {}
     }
   };
 

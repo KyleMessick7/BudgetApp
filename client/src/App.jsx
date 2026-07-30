@@ -10,16 +10,8 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Shared Month Selector State across Dashboard and Budgets
-  const getInitialMonth = () => {
-    try {
-      const saved = localStorage.getItem('selectedMonth');
-      if (saved && /^\d{4}-\d{2}$/.test(saved)) return saved;
-    } catch (e) {}
-    return new Date().toISOString().slice(0, 7); // Default e.g. "2026-07"
-  };
-
-  const [selectedMonth, setSelectedMonth] = useState(getInitialMonth);
+  // Shared Month Selector State (Defaults to current calendar month on launch)
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   const handleGlobalSync = async () => {
     try {

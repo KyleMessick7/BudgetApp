@@ -1,6 +1,8 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -10,8 +12,6 @@ import plaidRouter from './routes/plaid.js';
 import categoriesRouter from './routes/categories.js';
 import transactionsRouter from './routes/transactions.js';
 import analyticsRouter from './routes/analytics.js';
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,7 +39,12 @@ app.use('/api/analytics', analyticsRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString(), mockMode: process.env.USE_MOCK_DATA === 'true' });
+  res.json({ 
+    status: 'ok', 
+    time: new Date().toISOString(), 
+    mockMode: process.env.USE_MOCK_DATA === 'true' || !process.env.PLAID_CLIENT_ID,
+    plaidEnv: process.env.PLAID_ENV || 'sandbox'
+  });
 });
 
 // Serve frontend in production if built
@@ -50,6 +55,7 @@ app.listen(PORT, () => {
   console.log(`==================================================`);
   console.log(` Budgeting Backend Server running on port ${PORT}`);
   console.log(` API Endpoint: http://localhost:${PORT}/api/health`);
-  console.log(` Mock Data Mode: ${process.env.USE_MOCK_DATA === 'true' ? 'ENABLED' : 'DISABLED'}`);
+  console.log(` Plaid Client ID: ${process.env.PLAID_CLIENT_ID ? 'DETECTED (' + process.env.PLAID_CLIENT_ID.substring(0, 6) + '...)' : 'NOT SET'}`);
+  console.log(` Mode: ${process.env.USE_MOCK_DATA === 'true' || !process.env.PLAID_CLIENT_ID ? 'MOCK DATA DEMO' : 'LIVE PLAID (' + process.env.PLAID_ENV + ')'}`);
   console.log(`==================================================`);
 });

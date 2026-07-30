@@ -4,16 +4,21 @@ import db from '../db/database.js';
 
 const router = express.Router();
 
-// Initialize Plaid Client if credentials exist
-const plaidEnv = process.env.PLAID_ENV || 'sandbox';
-const clientId = process.env.PLAID_CLIENT_ID;
-const secret = process.env.PLAID_SECRET;
-const isMockMode = process.env.USE_MOCK_DATA === 'true' || !clientId || !secret;
+function getIsMockMode() {
+  const clientId = process.env.PLAID_CLIENT_ID;
+  const secret = process.env.PLAID_SECRET;
+  return process.env.USE_MOCK_DATA === 'true' || !clientId || !secret;
+}
 
-let plaidClient = null;
-if (!isMockMode) {
+function getPlaidClient() {
+  const plaidEnv = process.env.PLAID_ENV || 'sandbox';
+  const clientId = process.env.PLAID_CLIENT_ID;
+  const secret = process.env.PLAID_SECRET;
+
+  if (!clientId || !secret) return null;
+
   const configuration = new Configuration({
-    basePath: PlaidEnvironments[plaidEnv],
+    basePath: PlaidEnvironments[plaidEnv] || PlaidEnvironments.sandbox,
     baseOptions: {
       headers: {
         'PLAID-CLIENT-ID': clientId,
@@ -21,22 +26,24 @@ if (!isMockMode) {
       },
     },
   });
-  plaidClient = new PlaidApi(configuration);
+  return new PlaidApi(configuration);
 }
 
 // 1. Create Link Token
 router.post('/create-link-token', async (req, res) => {
   try {
-    if (isMockMode) {
+    const isMock = getIsMockMode();
+    if (isMock) {
       return res.json({
         link_token: 'mock_link_token_demo_mode',
         is_mock: true
       });
     }
 
+    const plaidClient = getPlaidClient();
     const request = {
       user: { client_user_id: 'user_budget_app' },
-      client_name: 'Budget App Personal',
+      client_name: 'VaultBudget Personal',
       products: ['auth', 'transactions'],
       country_codes: ['US'],
       language: 'en',
@@ -54,9 +61,9 @@ router.post('/create-link-token', async (req, res) => {
 router.post('/exchange-public-token', async (req, res) => {
   try {
     const { public_token, metadata } = req.body;
+    const isMock = getIsMockMode();
 
-    if (isMockMode || public_token === 'mock_public_token') {
-      // Simulate adding a mock bank account
+    if (isMock || public_token === 'mock_public_token') {
       const mockItemId = `mock_item_${Date.now()}`;
       const institutionName = metadata?.institution?.name || 'Mock Savings Bank';
       
@@ -73,7 +80,7 @@ router.post('/exchange-public-token', async (req, res) => {
       return res.json({ success: true, message: 'Mock account linked successfully' });
     }
 
-    // Real Plaid Exchange
+    const plaidClient = getPlaidClient();
     const response = await plaidClient.itemPublicTokenExchange({ public_token });
     const accessToken = response.data.access_token;
     const itemId = response.data.item_id;
@@ -85,7 +92,6 @@ router.post('/exchange-public-token', async (req, res) => {
       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
     `).run(itemId, accessToken, institutionName, institutionId);
 
-    // Fetch accounts associated with item
     const accountsResponse = await plaidClient.accountsGet({ access_token: accessToken });
     const accounts = accountsResponse.data.accounts;
 
@@ -108,9 +114,7 @@ router.post('/exchange-public-token', async (req, res) => {
       );
     }
 
-    // Trigger initial transaction sync
     await syncTransactionsForItem(itemId, accessToken);
-
     res.json({ success: true, item_id: itemId });
   } catch (error) {
     console.error('Error exchanging public token:', error?.response?.data || error.message);
@@ -120,9 +124,10 @@ router.post('/exchange-public-token', async (req, res) => {
 
 // Helper for transaction sync
 async function syncTransactionsForItem(itemId, accessToken) {
-  if (isMockMode) return;
+  if (getIsMockMode()) return;
 
   try {
+    const plaidClient = getPlaidClient();
     const response = await plaidClient.transactionsSync({ access_token: accessToken });
     const added = response.data.added;
 
@@ -135,7 +140,6 @@ async function syncTransactionsForItem(itemId, accessToken) {
     `);
 
     for (const t of added) {
-      // Simple category matching heuristic
       let catId = uncategorizedId;
       const primaryPlaidCat = t.category ? t.category[0] : '';
       if (primaryPlaidCat.includes('Food') || primaryPlaidCat.includes('Shops')) {
@@ -166,9 +170,10 @@ async function syncTransactionsForItem(itemId, accessToken) {
 // 3. Manual Sync All Connected Accounts Endpoint
 router.post('/sync', async (req, res) => {
   try {
+    const isMock = getIsMockMode();
     const items = db.prepare('SELECT * FROM plaid_items').all();
-    if (isMockMode) {
-      // In mock mode, generate 1 new test transaction
+
+    if (isMock) {
       const categories = db.prepare('SELECT id FROM categories').all();
       const randomCat = categories[Math.floor(Math.random() * categories.length)].id;
       const randomAmount = (Math.random() * 85 + 5).toFixed(2);

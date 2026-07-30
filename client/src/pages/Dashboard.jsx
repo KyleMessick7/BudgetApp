@@ -140,7 +140,9 @@ export default function Dashboard({ onAccountLinked }) {
                     </Pie>
                     <Tooltip 
                       formatter={(val) => formatCurrency(val)}
-                      contentStyle={{ background: '#111827', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
+                      contentStyle={{ background: '#1f2937', borderColor: 'rgba(255,255,255,0.2)', borderRadius: '8px', color: '#ffffff' }}
+                      itemStyle={{ color: '#ffffff' }}
+                      labelStyle={{ color: '#ffffff' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>

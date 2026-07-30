@@ -135,9 +135,9 @@ export default function Transactions() {
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
             >
-              <option value="">All Categories</option>
+              <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>All Categories</option>
               {categories.map((c) => (
-                <option key={c.id} value={c.id}>
+                <option key={c.id} value={c.id} style={{ color: '#000000', backgroundColor: '#ffffff' }}>
                   {c.icon} {c.name}
                 </option>
               ))}
@@ -190,9 +190,9 @@ export default function Transactions() {
                         value={tx.category_id || ''}
                         onChange={(e) => handleCategoryChange(tx.id, e.target.value)}
                       >
-                        <option value="">Uncategorized</option>
+                        <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>Uncategorized</option>
                         {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
+                          <option key={c.id} value={c.id} style={{ color: '#000000', backgroundColor: '#ffffff' }}>
                             {c.icon} {c.name}
                           </option>
                         ))}

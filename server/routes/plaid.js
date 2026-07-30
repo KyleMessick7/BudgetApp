@@ -103,7 +103,6 @@ router.post('/exchange-public-token', async (req, res) => {
     `);
 
     for (const acc of accounts) {
-      // Remove any older duplicate account entry matching the same mask & name
       if (acc.mask && acc.name) {
         db.prepare(`
           DELETE FROM accounts 
@@ -124,7 +123,6 @@ router.post('/exchange-public-token', async (req, res) => {
       );
     }
 
-    // Clean orphaned items
     db.prepare(`DELETE FROM plaid_items WHERE item_id NOT IN (SELECT DISTINCT item_id FROM accounts)`).run();
 
     await syncTransactionsForItem(itemId, accessToken);
@@ -147,9 +145,15 @@ async function syncTransactionsForItem(itemId, accessToken) {
     const categories = db.prepare('SELECT id, name FROM categories').all();
     const uncategorizedId = categories.find(c => c.name === 'Uncategorized')?.id || 1;
 
+    // Preserves custom categories and notes during sync updates
     const insertTx = db.prepare(`
-      INSERT OR REPLACE INTO transactions (plaid_transaction_id, account_id, category_id, amount, date, name, merchant_name, payment_channel, pending)
+      INSERT INTO transactions (plaid_transaction_id, account_id, category_id, amount, date, name, merchant_name, payment_channel, pending)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(plaid_transaction_id) DO UPDATE SET
+        amount = excluded.amount,
+        pending = excluded.pending,
+        date = excluded.date,
+        merchant_name = excluded.merchant_name
     `);
 
     for (const t of added) {

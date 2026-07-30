@@ -3,10 +3,11 @@ import db from '../db/database.js';
 
 const router = express.Router();
 
-// Get financial analytics summary
+// Get financial analytics summary with optional ?month=YYYY-MM
 router.get('/summary', (req, res) => {
   try {
-    const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+    const defaultMonth = new Date().toISOString().slice(0, 7);
+    const monthPrefix = req.query.month || defaultMonth;
 
     // Total accounts balance
     const accounts = db.prepare('SELECT * FROM accounts').all();
@@ -15,19 +16,19 @@ router.get('/summary', (req, res) => {
       return sum + (acc.current_balance || 0);
     }, 0);
 
-    // Current month expenses (positive amounts)
+    // Selected month expenses (positive amounts)
     const expensesResult = db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total 
       FROM transactions 
       WHERE amount > 0 AND date LIKE ?
-    `).get(`${currentMonthPrefix}%`);
+    `).get(`${monthPrefix}%`);
 
-    // Current month income (negative amounts in Plaid representation)
+    // Selected month income (negative amounts in Plaid representation)
     const incomeResult = db.prepare(`
       SELECT COALESCE(SUM(ABS(amount)), 0) as total 
       FROM transactions 
       WHERE amount < 0 AND date LIKE ?
-    `).get(`${currentMonthPrefix}%`);
+    `).get(`${monthPrefix}%`);
 
     // Total budget limit set across categories
     const budgetLimitResult = db.prepare(`
@@ -36,7 +37,7 @@ router.get('/summary', (req, res) => {
       WHERE name != 'Income'
     `).get();
 
-    // Spend breakdown by category
+    // Spend breakdown by category for selected month
     const categoryBreakdown = db.prepare(`
       SELECT 
         c.id, c.name, c.icon, c.color, c.budget_limit,
@@ -47,7 +48,7 @@ router.get('/summary', (req, res) => {
       GROUP BY c.id
       HAVING total_spent > 0
       ORDER BY total_spent DESC
-    `).all(`${currentMonthPrefix}%`);
+    `).all(`${monthPrefix}%`);
 
     res.json({
       netBalance: totalBalance,
@@ -56,28 +57,30 @@ router.get('/summary', (req, res) => {
       netSavings: incomeResult.total - expensesResult.total,
       totalBudgetLimit: budgetLimitResult.total,
       categoryBreakdown,
-      connectedAccountsCount: accounts.length
+      connectedAccountsCount: accounts.length,
+      selectedMonth: monthPrefix
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch analytics summary', details: error.message });
   }
 });
 
-// Get transactions for a specific category sorted from largest to smallest amount
+// Get transactions for a specific category for selected month sorted largest to smallest
 router.get('/category-transactions/:categoryId', (req, res) => {
   try {
     const { categoryId } = req.params;
-    const currentMonthPrefix = new Date().toISOString().slice(0, 7);
+    const defaultMonth = new Date().toISOString().slice(0, 7);
+    const monthPrefix = req.query.month || defaultMonth;
 
-    // Try fetching current month transactions first
+    // Try fetching selected month transactions first
     let transactions = db.prepare(`
       SELECT t.id, t.name, t.merchant_name, t.amount, t.date, t.payment_channel, t.flagged
       FROM transactions t
       WHERE t.category_id = ? AND t.amount > 0 AND t.date LIKE ?
       ORDER BY t.amount DESC, t.date DESC
-    `).all(categoryId, `${currentMonthPrefix}%`);
+    `).all(categoryId, `${monthPrefix}%`);
 
-    // Fallback: If no transactions in current month, fetch overall transactions for this category
+    // Fallback if no transactions in selected month
     if (transactions.length === 0) {
       transactions = db.prepare(`
         SELECT t.id, t.name, t.merchant_name, t.amount, t.date, t.payment_channel, t.flagged
@@ -111,7 +114,6 @@ router.get('/accounts', (req, res) => {
 // Purge all mock accounts and mock transactions from SQLite
 router.post('/clear-mock-data', (req, res) => {
   try {
-    // Delete mock transactions
     db.prepare(`
       DELETE FROM transactions 
       WHERE plaid_transaction_id LIKE 'tx_%' 
@@ -122,7 +124,6 @@ router.post('/clear-mock-data', (req, res) => {
          OR account_id LIKE 'acc_mock_%'
     `).run();
 
-    // Delete mock accounts
     db.prepare(`
       DELETE FROM accounts 
       WHERE item_id LIKE 'mock_%' 
@@ -132,7 +133,6 @@ router.post('/clear-mock-data', (req, res) => {
          OR plaid_account_id LIKE 'acc_mock_%'
     `).run();
 
-    // Delete mock items
     db.prepare(`DELETE FROM plaid_items WHERE item_id LIKE 'mock_%'`).run();
 
     res.json({ success: true, message: 'Mock data purged successfully.' });

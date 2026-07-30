@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Check, X, AlertTriangle } from 'lucide-react';
+import MonthSelector from '../components/MonthSelector';
 
-export default function Budgets() {
+export default function Budgets({ selectedMonth, setSelectedMonth }) {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -12,12 +13,13 @@ export default function Budgets() {
 
   useEffect(() => {
     fetchCategories();
-  }, []);
+  }, [selectedMonth]);
 
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/categories');
+      const activeMonth = selectedMonth || new Date().toISOString().slice(0, 7);
+      const res = await fetch(`/api/categories?month=${activeMonth}`);
       const data = await res.json();
       setCategories(data);
     } catch (err) {
@@ -74,7 +76,7 @@ export default function Budgets() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '800' }}>Monthly Budgets & Category Targets</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
@@ -82,10 +84,14 @@ export default function Budgets() {
           </p>
         </div>
 
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-          <Plus size={18} />
-          <span>New Budget Category</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <MonthSelector selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} />
+
+          <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={18} />
+            <span>New Budget Category</span>
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
@@ -113,7 +119,7 @@ export default function Budgets() {
                       </div>
                       <div>
                         <h3 style={{ fontSize: '16px', fontWeight: '700' }}>{cat.name}</h3>
-                        <div style={{ fontSize: '12px', color: '#9ca3af' }}>{cat.transaction_count || 0} Transactions</div>
+                        <div style={{ fontSize: '12px', color: '#9ca3af' }}>{cat.transaction_count || 0} Transactions in Month</div>
                       </div>
                     </div>
 
@@ -137,7 +143,7 @@ export default function Budgets() {
 
                   <div style={{ marginBottom: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '8px' }}>
-                      <span style={{ color: '#9ca3af' }}>Spent this month:</span>
+                      <span style={{ color: '#9ca3af' }}>Spent in month:</span>
                       <span style={{ fontWeight: '700', color: isIncome ? '#34d399' : '#fff' }}>
                         {formatCurrency(spent)}
                       </span>

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, ArrowUpRight, ArrowDownRight, Wallet, PieChart as PieIcon, RefreshCw, ArrowLeft, RotateCcw } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import MonthSelector from '../components/MonthSelector';
 
-export default function Dashboard({ isSyncing, onSync }) {
+export default function Dashboard({ isSyncing, onSync, selectedMonth, setSelectedMonth }) {
   const [summary, setSummary] = useState(null);
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -15,14 +16,15 @@ export default function Dashboard({ isSyncing, onSync }) {
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [selectedMonth]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      const activeMonth = selectedMonth || new Date().toISOString().slice(0, 7);
       const [sumRes, txRes] = await Promise.all([
-        fetch('/api/analytics/summary'),
-        fetch('/api/transactions?limit=6')
+        fetch(`/api/analytics/summary?month=${activeMonth}`),
+        fetch(`/api/transactions?limit=6`)
       ]);
 
       const sumData = await sumRes.json();
@@ -30,6 +32,8 @@ export default function Dashboard({ isSyncing, onSync }) {
 
       setSummary(sumData);
       setRecentTransactions(txData.transactions || []);
+      setSelectedCategory(null);
+      setCategoryTransactions([]);
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -40,7 +44,6 @@ export default function Dashboard({ isSyncing, onSync }) {
   const handleCategoryClick = async (cat) => {
     try {
       if (selectedCategory && selectedCategory.id === cat.id) {
-        // Toggle collapse if clicking the same category
         handleResetView();
         return;
       }
@@ -49,7 +52,8 @@ export default function Dashboard({ isSyncing, onSync }) {
       setHoveredIndex(null);
       setLoadingCategoryTxs(true);
 
-      const res = await fetch(`/api/analytics/category-transactions/${cat.id}`);
+      const activeMonth = selectedMonth || new Date().toISOString().slice(0, 7);
+      const res = await fetch(`/api/analytics/category-transactions/${cat.id}?month=${activeMonth}`);
       const transactions = await res.json();
       setCategoryTransactions(transactions || []);
     } catch (err) {
@@ -96,7 +100,7 @@ export default function Dashboard({ isSyncing, onSync }) {
   return (
     <div>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '800' }}>Financial Dashboard</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
@@ -104,10 +108,14 @@ export default function Dashboard({ isSyncing, onSync }) {
           </p>
         </div>
 
-        <button className="btn btn-secondary" onClick={onSync} disabled={isSyncing}>
-          <RefreshCw size={16} className={isSyncing ? 'spin-anim' : ''} />
-          <span>{isSyncing ? 'Syncing Purchases...' : 'Sync Bank Purchases'}</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <MonthSelector selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} />
+
+          <button className="btn btn-secondary" onClick={onSync} disabled={isSyncing}>
+            <RefreshCw size={16} className={isSyncing ? 'spin-anim' : ''} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Bank Purchases'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards Row */}
@@ -134,7 +142,7 @@ export default function Dashboard({ isSyncing, onSync }) {
             {formatCurrency(summary.monthExpenses)}
           </div>
           <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px' }}>
-            Spent in current calendar month
+            Spent in selected month
           </div>
         </div>
 
@@ -147,7 +155,7 @@ export default function Dashboard({ isSyncing, onSync }) {
             {formatCurrency(summary.monthIncome)}
           </div>
           <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px' }}>
-            Received this month
+            Received in selected month
           </div>
         </div>
 
@@ -160,7 +168,7 @@ export default function Dashboard({ isSyncing, onSync }) {
             {summary.netSavings >= 0 ? `+${formatCurrency(summary.netSavings)}` : formatCurrency(summary.netSavings)}
           </div>
           <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '8px' }}>
-            Income minus monthly expenses
+            Income minus expenses
           </div>
         </div>
       </div>
@@ -192,7 +200,7 @@ export default function Dashboard({ isSyncing, onSync }) {
           </div>
 
           {activeCategoryList.length === 0 ? (
-            <div style={{ color: '#9ca3af', textAlign: 'center', padding: '40px 0' }}>No spending recorded this month yet.</div>
+            <div style={{ color: '#9ca3af', textAlign: 'center', padding: '40px 0' }}>No spending recorded for this month.</div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
               {/* Pie Chart Component */}
@@ -277,7 +285,7 @@ export default function Dashboard({ isSyncing, onSync }) {
                   loadingCategoryTxs ? (
                     <div style={{ color: '#9ca3af', fontSize: '13px', padding: '20px' }}>Loading purchases...</div>
                   ) : categoryTransactions.length === 0 ? (
-                    <div style={{ color: '#9ca3af', fontSize: '13px', padding: '20px' }}>No individual transactions found.</div>
+                    <div style={{ color: '#9ca3af', fontSize: '13px', padding: '20px' }}>No purchases found for this month.</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <div style={{ fontSize: '12px', fontWeight: '700', color: '#9ca3af', marginBottom: '4px', textTransform: 'uppercase' }}>
@@ -376,7 +384,7 @@ export default function Dashboard({ isSyncing, onSync }) {
                 style={{ 
                   display: 'flex', 
                   alignItems: 'center', 
-                  justifyContent: 'space-between', 
+                  justifySpace: 'between', 
                   padding: '10px 12px', 
                   background: 'rgba(255,255,255,0.02)', 
                   borderRadius: '10px',

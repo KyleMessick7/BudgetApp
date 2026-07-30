@@ -3,10 +3,11 @@ import db from '../db/database.js';
 
 const router = express.Router();
 
-// Get all categories with calculated spent amount for the current month
+// Get all categories with calculated spent amount for specified month ?month=YYYY-MM
 router.get('/', (req, res) => {
   try {
-    const currentMonthPrefix = new Date().toISOString().slice(0, 7); // e.g. "2026-07"
+    const defaultMonth = new Date().toISOString().slice(0, 7);
+    const monthPrefix = req.query.month || defaultMonth;
 
     const categories = db.prepare(`
       SELECT 
@@ -16,12 +17,12 @@ router.get('/', (req, res) => {
         c.color, 
         c.budget_limit,
         COALESCE(SUM(CASE WHEN t.amount > 0 AND t.date LIKE ? THEN t.amount ELSE 0 END), 0) as spent_current_month,
-        COUNT(t.id) as transaction_count
+        COUNT(CASE WHEN t.date LIKE ? THEN t.id END) as transaction_count
       FROM categories c
       LEFT JOIN transactions t ON t.category_id = c.id
       GROUP BY c.id
       ORDER BY c.id ASC
-    `).all(`${currentMonthPrefix}%`);
+    `).all(`${monthPrefix}%`, `${monthPrefix}%`);
 
     res.json(categories);
   } catch (error) {

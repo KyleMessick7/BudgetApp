@@ -10,6 +10,17 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Shared Month Selector State across Dashboard and Budgets
+  const getInitialMonth = () => {
+    try {
+      const saved = localStorage.getItem('selectedMonth');
+      if (saved && /^\d{4}-\d{2}$/.test(saved)) return saved;
+    } catch (e) {}
+    return new Date().toISOString().slice(0, 7); // Default e.g. "2026-07"
+  };
+
+  const [selectedMonth, setSelectedMonth] = useState(getInitialMonth);
+
   const handleGlobalSync = async () => {
     try {
       setIsSyncing(true);
@@ -34,9 +45,22 @@ export default function App() {
       />
 
       <main className="main-wrapper" key={refreshKey}>
-        {activeTab === 'dashboard' && <Dashboard onAccountLinked={handleGlobalSync} />}
+        {activeTab === 'dashboard' && (
+          <Dashboard 
+            onAccountLinked={handleGlobalSync} 
+            isSyncing={isSyncing} 
+            onSync={handleGlobalSync}
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
+          />
+        )}
         {activeTab === 'transactions' && <Transactions />}
-        {activeTab === 'budgets' && <Budgets />}
+        {activeTab === 'budgets' && (
+          <Budgets 
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
+          />
+        )}
         {activeTab === 'accounts' && <Accounts isSyncing={isSyncing} onSync={handleGlobalSync} />}
       </main>
     </div>

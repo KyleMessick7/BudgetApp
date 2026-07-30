@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Trash2, Edit3, Tag, Flag } from 'lucide-react';
+import { Search, Filter, Plus, Trash2, Edit3, Tag, Flag, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
@@ -9,6 +9,11 @@ export default function Transactions() {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  // Pagination States
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [totalCount, setTotalCount] = useState(0);
 
   // Form state for adding manual purchase
   const [newTx, setNewTx] = useState({
@@ -21,8 +26,32 @@ export default function Transactions() {
 
   useEffect(() => {
     fetchCategories();
+  }, []);
+
+  useEffect(() => {
     fetchTransactions();
-  }, [search, selectedCategory, flaggedOnly]);
+  }, [search, selectedCategory, flaggedOnly, currentPage, pageSize]);
+
+  // Reset to Page 1 when filters change
+  const handleSearchChange = (val) => {
+    setSearch(val);
+    setCurrentPage(1);
+  };
+
+  const handleCategoryFilterChange = (val) => {
+    setSelectedCategory(val);
+    setCurrentPage(1);
+  };
+
+  const handleFlaggedToggle = () => {
+    setFlaggedOnly(!flaggedOnly);
+    setCurrentPage(1);
+  };
+
+  const handlePageSizeChange = (val) => {
+    setPageSize(parseInt(val));
+    setCurrentPage(1);
+  };
 
   const fetchCategories = async () => {
     try {
@@ -34,12 +63,11 @@ export default function Transactions() {
     }
   };
 
-  const [totalCount, setTotalCount] = useState(0);
-
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      let url = `/api/transactions?limit=5000&search=${encodeURIComponent(search)}`;
+      const offset = (currentPage - 1) * pageSize;
+      let url = `/api/transactions?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(search)}`;
       if (selectedCategory) url += `&category_id=${selectedCategory}`;
       if (flaggedOnly) url += `&flagged=1`;
 
@@ -118,13 +146,17 @@ export default function Transactions() {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
   };
 
+  const totalPages = Math.ceil(totalCount / pageSize) || 1;
+  const startIdx = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endIdx = Math.min(currentPage * pageSize, totalCount);
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '800' }}>Transactions & Purchases</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
-            Showing {transactions.length} of {totalCount} total saved transactions • Search, recategorize, and flag for review
+            Showing {startIdx}–{endIdx} of {totalCount} total transactions
           </p>
         </div>
 
@@ -145,15 +177,15 @@ export default function Transactions() {
               style={{ paddingLeft: '40px' }}
               placeholder="Search by merchant, purchase description..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
             />
           </div>
 
-          <div style={{ width: '220px' }}>
+          <div style={{ width: '200px' }}>
             <select
               className="input"
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              onChange={(e) => handleCategoryFilterChange(e.target.value)}
             >
               <option value="" style={{ color: '#000000', backgroundColor: '#ffffff' }}>All Categories</option>
               {categories.map((c) => (
@@ -164,6 +196,19 @@ export default function Transactions() {
             </select>
           </div>
 
+          <div style={{ width: '160px' }}>
+            <select
+              className="input"
+              value={pageSize}
+              onChange={(e) => handlePageSizeChange(e.target.value)}
+            >
+              <option value="50" style={{ color: '#000000', backgroundColor: '#ffffff' }}>50 per page</option>
+              <option value="100" style={{ color: '#000000', backgroundColor: '#ffffff' }}>100 per page</option>
+              <option value="150" style={{ color: '#000000', backgroundColor: '#ffffff' }}>150 per page</option>
+              <option value="200" style={{ color: '#000000', backgroundColor: '#ffffff' }}>200 per page</option>
+            </select>
+          </div>
+
           <button 
             className="btn btn-secondary" 
             style={{ 
@@ -171,7 +216,7 @@ export default function Transactions() {
               borderColor: flaggedOnly ? '#f59e0b' : 'var(--border-color)',
               color: flaggedOnly ? '#fbbf24' : 'var(--text-main)'
             }}
-            onClick={() => setFlaggedOnly(!flaggedOnly)}
+            onClick={handleFlaggedToggle}
           >
             <Flag size={16} color={flaggedOnly ? '#f59e0b' : 'currentColor'} />
             <span>{flaggedOnly ? 'Showing Flagged' : 'Flagged Only'}</span>
@@ -275,6 +320,62 @@ export default function Transactions() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Footer Pagination Bar */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '16px 24px', borderTop: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '12px'
+        }}>
+          <div style={{ fontSize: '13px', color: '#9ca3af' }}>
+            Showing <strong style={{ color: '#fff' }}>{startIdx}–{endIdx}</strong> of <strong style={{ color: '#fff' }}>{totalCount}</strong> transactions
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 10px' }}
+              disabled={currentPage === 1 || loading}
+              onClick={() => setCurrentPage(1)}
+              title="First Page"
+            >
+              <ChevronsLeft size={16} />
+            </button>
+
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 12px' }}
+              disabled={currentPage === 1 || loading}
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            >
+              <ChevronLeft size={16} />
+              <span>Prev</span>
+            </button>
+
+            <span style={{ fontSize: '13px', color: '#fff', padding: '0 8px', fontWeight: '600' }}>
+              Page {currentPage} of {totalPages}
+            </span>
+
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 12px' }}
+              disabled={currentPage >= totalPages || loading}
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            >
+              <span>Next</span>
+              <ChevronRight size={16} />
+            </button>
+
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '6px 10px' }}
+              disabled={currentPage >= totalPages || loading}
+              onClick={() => setCurrentPage(totalPages)}
+              title="Last Page"
+            >
+              <ChevronsRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
 

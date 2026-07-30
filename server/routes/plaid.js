@@ -41,7 +41,6 @@ router.post('/create-link-token', async (req, res) => {
     }
 
     const plaidClient = getPlaidClient();
-    // Request 'transactions' product (supports Checking, Savings, AND Credit Cards)
     const request = {
       user: { client_user_id: 'user_budget_app' },
       client_name: 'VaultBudget Personal',
@@ -104,6 +103,14 @@ router.post('/exchange-public-token', async (req, res) => {
     `);
 
     for (const acc of accounts) {
+      // Remove any older duplicate account entry matching the same mask & name
+      if (acc.mask && acc.name) {
+        db.prepare(`
+          DELETE FROM accounts 
+          WHERE name = ? AND mask = ? AND plaid_account_id != ?
+        `).run(acc.name, acc.mask, acc.account_id);
+      }
+
       insertAccount.run(
         acc.account_id,
         itemId,
@@ -116,6 +123,9 @@ router.post('/exchange-public-token', async (req, res) => {
         acc.balances.available || acc.balances.current || 0
       );
     }
+
+    // Clean orphaned items
+    db.prepare(`DELETE FROM plaid_items WHERE item_id NOT IN (SELECT DISTINCT item_id FROM accounts)`).run();
 
     await syncTransactionsForItem(itemId, accessToken);
     res.json({ success: true, item_id: itemId });

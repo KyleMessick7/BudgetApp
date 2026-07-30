@@ -41,10 +41,11 @@ router.post('/create-link-token', async (req, res) => {
     }
 
     const plaidClient = getPlaidClient();
+    // Request 'transactions' product (supports Checking, Savings, AND Credit Cards)
     const request = {
       user: { client_user_id: 'user_budget_app' },
       client_name: 'VaultBudget Personal',
-      products: ['auth', 'transactions'],
+      products: ['transactions'],
       country_codes: ['US'],
       language: 'en',
     };
@@ -94,6 +95,8 @@ router.post('/exchange-public-token', async (req, res) => {
 
     const accountsResponse = await plaidClient.accountsGet({ access_token: accessToken });
     const accounts = accountsResponse.data.accounts;
+
+    console.log(`Plaid returned ${accounts.length} accounts for item ${itemId}:`, accounts.map(a => `${a.name} (${a.type}/${a.subtype})`));
 
     const insertAccount = db.prepare(`
       INSERT OR REPLACE INTO accounts (plaid_account_id, item_id, name, official_name, type, subtype, mask, current_balance, available_balance, updated_at)

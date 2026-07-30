@@ -69,12 +69,24 @@ router.get('/category-transactions/:categoryId', (req, res) => {
     const { categoryId } = req.params;
     const currentMonthPrefix = new Date().toISOString().slice(0, 7);
 
-    const transactions = db.prepare(`
+    // Try fetching current month transactions first
+    let transactions = db.prepare(`
       SELECT t.id, t.name, t.merchant_name, t.amount, t.date, t.payment_channel, t.flagged
       FROM transactions t
       WHERE t.category_id = ? AND t.amount > 0 AND t.date LIKE ?
       ORDER BY t.amount DESC, t.date DESC
     `).all(categoryId, `${currentMonthPrefix}%`);
+
+    // Fallback: If no transactions in current month, fetch overall transactions for this category
+    if (transactions.length === 0) {
+      transactions = db.prepare(`
+        SELECT t.id, t.name, t.merchant_name, t.amount, t.date, t.payment_channel, t.flagged
+        FROM transactions t
+        WHERE t.category_id = ? AND t.amount > 0
+        ORDER BY t.amount DESC, t.date DESC
+        LIMIT 100
+      `).all(categoryId);
+    }
 
     res.json(transactions);
   } catch (error) {

@@ -126,7 +126,9 @@ router.post('/exchange-public-token', async (req, res) => {
       );
     }
 
+    // Clean orphaned items and transactions from old account connections
     db.prepare(`DELETE FROM plaid_items WHERE item_id NOT IN (SELECT DISTINCT item_id FROM accounts)`).run();
+    db.prepare(`DELETE FROM transactions WHERE account_id NOT IN (SELECT plaid_account_id FROM accounts)`).run();
 
     await syncTransactionsForItem(itemId, accessToken);
     res.json({ success: true, item_id: itemId });

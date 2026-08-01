@@ -20,10 +20,23 @@ export function initDatabase() {
       access_token TEXT NOT NULL,
       institution_name TEXT NOT NULL,
       institution_id TEXT,
+      client_id TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Migration check: Add client_id column to plaid_items if missing
+  try {
+    const itemTableInfo = db.prepare(`PRAGMA table_info(plaid_items)`).all();
+    const hasClientId = itemTableInfo.some(col => col.name === 'client_id');
+    if (!hasClientId) {
+      db.exec(`ALTER TABLE plaid_items ADD COLUMN client_id TEXT;`);
+      console.log('Added "client_id" column to plaid_items table.');
+    }
+  } catch (err) {
+    console.error('Error checking client_id column in plaid_items:', err.message);
+  }
 
   // 2. Accounts table
   db.exec(`

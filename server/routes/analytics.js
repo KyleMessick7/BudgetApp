@@ -97,14 +97,41 @@ router.get('/category-transactions/:categoryId', (req, res) => {
   }
 });
 
-// Get accounts list
+// Get accounts list joined with Plaid item client_id and mapped key owner
 router.get('/accounts', (req, res) => {
   try {
-    const accounts = db.prepare(`
-      SELECT a.*, pi.institution_name 
+    const key1ClientId = process.env.PLAID_CLIENT_ID;
+    const key2ClientId = process.env.PLAID_CLIENT_ID_2;
+    const key3ClientId = process.env.PLAID_CLIENT_ID_3;
+
+    const rawAccounts = db.prepare(`
+      SELECT a.*, pi.institution_name, pi.client_id
       FROM accounts a
       LEFT JOIN plaid_items pi ON a.item_id = pi.item_id
     `).all();
+
+    const accounts = rawAccounts.map(acc => {
+      let keyOwner = 'Unknown Key';
+      let keyIndex = 1;
+
+      if (acc.client_id === key1ClientId || !acc.client_id) {
+        keyOwner = 'Kyle';
+        keyIndex = 1;
+      } else if (acc.client_id === key2ClientId) {
+        keyOwner = 'Mallory';
+        keyIndex = 2;
+      } else if (acc.client_id === key3ClientId) {
+        keyOwner = 'Key #3';
+        keyIndex = 3;
+      }
+
+      return {
+        ...acc,
+        key_owner: keyOwner,
+        key_index: keyIndex
+      };
+    });
+
     res.json(accounts);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch accounts', details: error.message });

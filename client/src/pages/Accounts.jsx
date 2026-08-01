@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Landmark, CreditCard, ShieldCheck, RefreshCw, Trash2, Calendar, History, Unlink } from 'lucide-react';
+import { Landmark, CreditCard, ShieldCheck, RefreshCw, Trash2, Calendar, History, Unlink, User, Key } from 'lucide-react';
 import PlaidLinkButton from '../components/PlaidLinkButton';
 
 export default function Accounts({ isSyncing, onSync }) {
   const [accounts, setAccounts] = useState([]);
+  const [keyPoolStatus, setKeyPoolStatus] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [historyDays, setHistoryDays] = useState('365');
@@ -12,6 +13,7 @@ export default function Accounts({ isSyncing, onSync }) {
 
   useEffect(() => {
     fetchAccounts();
+    fetchCredentialsStatus();
   }, []);
 
   const fetchAccounts = async () => {
@@ -24,6 +26,18 @@ export default function Accounts({ isSyncing, onSync }) {
       console.error('Failed to load accounts:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCredentialsStatus = async () => {
+    try {
+      const res = await fetch('/api/plaid/credentials-status');
+      const data = await res.json();
+      if (data.success) {
+        setKeyPoolStatus(data.poolStatus || []);
+      }
+    } catch (err) {
+      console.error('Failed to load credentials status:', err);
     }
   };
 
@@ -65,6 +79,7 @@ export default function Accounts({ isSyncing, onSync }) {
       const data = await res.json();
       if (res.ok) {
         fetchAccounts();
+        fetchCredentialsStatus();
         if (onSync) onSync();
       } else {
         alert(`Failed to unlink bank: ${data.error}`);
@@ -82,6 +97,7 @@ export default function Accounts({ isSyncing, onSync }) {
       const res = await fetch('/api/analytics/clear-mock-data', { method: 'POST' });
       if (res.ok) {
         fetchAccounts();
+        fetchCredentialsStatus();
         if (onSync) onSync();
       }
     } catch (err) {
@@ -97,7 +113,8 @@ export default function Accounts({ isSyncing, onSync }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+      {/* Page Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '28px', fontWeight: '800' }}>Connected Bank Accounts</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
@@ -127,10 +144,55 @@ export default function Accounts({ isSyncing, onSync }) {
             <span>Sync Transactions</span>
           </button>
 
-          <PlaidLinkButton onSuccessCallback={fetchAccounts} />
+          <PlaidLinkButton onSuccessCallback={() => { fetchAccounts(); fetchCredentialsStatus(); }} />
         </div>
       </div>
 
+      {/* Key Pool Capacity Overview Bar */}
+      {keyPoolStatus.length > 0 && (
+        <div className="card" style={{ padding: '16px 20px', marginBottom: '28px', background: 'rgba(255,255,255,0.03)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <Key size={18} color="#6366f1" />
+            <h2 style={{ fontSize: '15px', fontWeight: '700', color: '#ffffff' }}>Plaid Trial API Key Capacity Pool</h2>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            {keyPoolStatus.map((cred) => {
+              const ownerName = cred.keyIndex === 1 ? 'Kyle' : cred.keyIndex === 2 ? 'Mallory' : `Key #${cred.keyIndex}`;
+              const themeColor = cred.keyIndex === 1 ? '#6366f1' : cred.keyIndex === 2 ? '#ec4899' : '#8b5cf6';
+              const percent = Math.min(Math.round((cred.activeItemsCount / cred.maxItemsLimit) * 100), 100);
+
+              return (
+                <div key={cred.keyIndex} style={{
+                  padding: '12px 14px', borderRadius: '10px',
+                  background: 'rgba(0,0,0,0.2)', border: `1px solid ${themeColor}40`
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <User size={14} color={themeColor} /> {ownerName}'s Plaid Key
+                    </span>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: cred.hasAvailableSlot ? '#34d399' : '#f87171' }}>
+                      {cred.activeItemsCount} / {cred.maxItemsLimit} Banks
+                    </span>
+                  </div>
+
+                  <div className="progress-bar-bg" style={{ height: '6px' }}>
+                    <div
+                      className="progress-bar-fill"
+                      style={{
+                        width: `${percent}%`,
+                        background: themeColor
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Connected Accounts Cards Grid */}
       {loading ? (
         <div style={{ color: '#9ca3af' }}>Loading connected accounts...</div>
       ) : accounts.length === 0 ? (
@@ -140,13 +202,17 @@ export default function Accounts({ isSyncing, onSync }) {
           <p style={{ color: '#9ca3af', marginBottom: '24px', maxWidth: '440px', margin: '0 auto 24px auto' }}>
             Connect your bank accounts securely using Plaid Sandbox or Production to sync your real purchases.
           </p>
-          <PlaidLinkButton onSuccessCallback={fetchAccounts} />
+          <PlaidLinkButton onSuccessCallback={() => { fetchAccounts(); fetchCredentialsStatus(); }} />
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
           {accounts.map((acc) => {
             const isCredit = acc.type === 'credit';
             const isMock = acc.item_id && acc.item_id.startsWith('mock_');
+            const ownerName = acc.key_owner || 'Kyle';
+            const isMallory = ownerName === 'Mallory';
+            const ownerThemeColor = isMallory ? '#ec4899' : '#6366f1';
+
             return (
               <div key={acc.id} className="card" style={{ opacity: isMock ? 0.75 : 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
@@ -168,9 +234,15 @@ export default function Accounts({ isSyncing, onSync }) {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span className={`badge ${isMock ? 'badge-yellow' : 'badge-green'}`} style={{ textTransform: 'capitalize' }}>
-                      <ShieldCheck size={12} />
-                      {isMock ? 'Demo Mock' : (acc.subtype || acc.type)}
+                    {/* Key Owner Badge */}
+                    <span 
+                      style={{ 
+                        fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '6px',
+                        background: `${ownerThemeColor}20`, color: ownerThemeColor, border: `1px solid ${ownerThemeColor}40`,
+                        display: 'inline-flex', alignItems: 'center', gap: '4px'
+                      }}
+                    >
+                      <User size={10} /> {ownerName}'s Key
                     </span>
 
                     <button 

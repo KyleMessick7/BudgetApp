@@ -88,3 +88,22 @@ def format_currency(amount: float) -> str:
         return f"${val:,.2f}"
     except (ValueError, TypeError):
         return "$0.00"
+
+def get_sub_section_color(index: int, total: int, base_color: str = "#6366f1") -> str:
+    """Generate dynamic distinct color shades for individual transaction slices in drill-down mode."""
+    base_hues = {
+        "#6366f1": 239,
+        "#f59e0b": 38,
+        "#10b981": 160,
+        "#ec4899": 330,
+        "#8b5cf6": 262,
+        "#06b6d4": 188,
+        "#22c55e": 142,
+        "#6b7280": 220,
+    }
+    base_key = (base_color or "#6366f1").lower()
+    hue = base_hues.get(base_key, (index * 45) % 360)
+    lightness = max(35, 75 - (index % 6) * 8)
+    saturation = 85
+    return f"hsl({hue}, {saturation}%, {lightness}%)"
+

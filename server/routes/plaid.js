@@ -257,54 +257,139 @@ router.post('/exchange-public-token', async (req, res) => {
 
 // Helper for transaction sync using item-specific Plaid client
 async function syncTransactionsForItem(itemId, accessToken) {
-  if (getIsMockMode()) return;
+  if (getIsMockMode()) return { added: 0, modified: 0, removed: 0 };
 
-  try {
-    const plaidClient = getPlaidClientForItem(itemId);
-    if (!plaidClient) return;
+  const plaidClient = getPlaidClientForItem(itemId);
+  if (!plaidClient) return { added: 0, modified: 0, removed: 0 };
 
-    const response = await plaidClient.transactionsSync({ access_token: accessToken });
-    const added = response.data.added;
+  // Fetch current stored cursor for this item
+  const itemRow = db.prepare('SELECT cursor FROM plaid_items WHERE item_id = ?').get(itemId);
+  let cursor = itemRow?.cursor || null;
 
-    const categories = db.prepare('SELECT id, name FROM categories').all();
-    const uncategorizedId = categories.find(c => c.name === 'Uncategorized')?.id || 1;
+  let addedCount = 0;
+  let modifiedCount = 0;
+  let removedCount = 0;
+  let hasMore = true;
+  let iteration = 0;
+  const maxIterations = 50; // Guard against runaway pagination
 
-    const insertTx = db.prepare(`
-      INSERT INTO transactions (plaid_transaction_id, account_id, category_id, amount, date, name, merchant_name, payment_channel, pending)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(plaid_transaction_id) DO UPDATE SET
-        amount = excluded.amount,
-        pending = excluded.pending,
-        date = excluded.date,
-        merchant_name = excluded.merchant_name
-    `);
+  const categories = db.prepare('SELECT id, name FROM categories').all();
+  const uncategorizedId = categories.find(c => c.name === 'Uncategorized')?.id || 1;
 
-    for (const t of added) {
-      let catId = uncategorizedId;
-      const primaryPlaidCat = t.category ? t.category[0] : '';
-      if (primaryPlaidCat.includes('Food') || primaryPlaidCat.includes('Shops')) {
-        catId = categories.find(c => c.name.includes('Groceries'))?.id || catId;
-      } else if (primaryPlaidCat.includes('Travel') || primaryPlaidCat.includes('Gas')) {
-        catId = categories.find(c => c.name.includes('Transportation'))?.id || catId;
-      } else if (primaryPlaidCat.includes('Payment') || t.amount < 0) {
-        catId = categories.find(c => c.name === 'Income')?.id || catId;
+  const insertTx = db.prepare(`
+    INSERT INTO transactions (plaid_transaction_id, account_id, category_id, amount, date, name, merchant_name, payment_channel, pending)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(plaid_transaction_id) DO UPDATE SET
+      amount = excluded.amount,
+      pending = excluded.pending,
+      date = excluded.date,
+      merchant_name = excluded.merchant_name
+  `);
+
+  const deleteTx = db.prepare(`
+    DELETE FROM transactions WHERE plaid_transaction_id = ?
+  `);
+
+  const categorize = (t) => {
+    let catId = uncategorizedId;
+    const primaryPlaidCat = t.category ? t.category[0] : '';
+    if (primaryPlaidCat.includes('Food') || primaryPlaidCat.includes('Shops')) {
+      catId = categories.find(c => c.name.includes('Groceries'))?.id || catId;
+    } else if (primaryPlaidCat.includes('Travel') || primaryPlaidCat.includes('Gas')) {
+      catId = categories.find(c => c.name.includes('Transportation'))?.id || catId;
+    } else if (primaryPlaidCat.includes('Payment') || t.amount < 0) {
+      catId = categories.find(c => c.name === 'Income')?.id || catId;
+    }
+    return catId;
+  };
+
+  while (hasMore && iteration < maxIterations) {
+    iteration++;
+    try {
+      const syncParams = { access_token: accessToken, count: 500 };
+      if (cursor) syncParams.cursor = cursor;
+
+      const response = await plaidClient.transactionsSync(syncParams);
+      const { added = [], modified = [], removed = [], next_cursor, has_more } = response.data;
+
+      for (const t of added) {
+        const catId = categorize(t);
+        insertTx.run(
+          t.transaction_id,
+          t.account_id,
+          catId,
+          t.amount,
+          t.date,
+          t.name,
+          t.merchant_name || t.name,
+          t.payment_channel,
+          t.pending ? 1 : 0
+        );
+        addedCount++;
       }
 
-      insertTx.run(
-        t.transaction_id,
-        t.account_id,
-        catId,
-        t.amount,
-        t.date,
-        t.name,
-        t.merchant_name || t.name,
-        t.payment_channel,
-        t.pending ? 1 : 0
+      for (const t of modified) {
+        const catId = categorize(t);
+        insertTx.run(
+          t.transaction_id,
+          t.account_id,
+          catId,
+          t.amount,
+          t.date,
+          t.name,
+          t.merchant_name || t.name,
+          t.payment_channel,
+          t.pending ? 1 : 0
+        );
+        modifiedCount++;
+      }
+
+      for (const r of removed) {
+        if (r.transaction_id) {
+          deleteTx.run(r.transaction_id);
+          removedCount++;
+        }
+      }
+
+      cursor = next_cursor;
+      hasMore = Boolean(has_more);
+    } catch (err) {
+      if (err?.response?.data?.error_code === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION') {
+        console.warn(`Plaid mutation during sync pagination for item ${itemId}. Restarting pagination from original cursor.`);
+        cursor = itemRow?.cursor || null;
+        continue;
+      }
+      console.error('Error syncing transactions for item', itemId, err?.response?.data || err.message);
+      break;
+    }
+  }
+
+  // Persist final cursor for future incremental syncs
+  if (cursor) {
+    db.prepare('UPDATE plaid_items SET cursor = ?, updated_at = CURRENT_TIMESTAMP WHERE item_id = ?').run(cursor, itemId);
+  }
+
+  // Also refresh account balances
+  try {
+    const accountsResponse = await plaidClient.accountsGet({ access_token: accessToken });
+    const accounts = accountsResponse.data.accounts || [];
+    const updateBalance = db.prepare(`
+      UPDATE accounts 
+      SET current_balance = ?, available_balance = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE plaid_account_id = ?
+    `);
+    for (const acc of accounts) {
+      updateBalance.run(
+        acc.balances.current ?? 0,
+        acc.balances.available ?? acc.balances.current ?? 0,
+        acc.account_id
       );
     }
-  } catch (err) {
-    console.error('Error syncing transactions for item', itemId, err?.response?.data || err.message);
+  } catch (balErr) {
+    console.warn(`Could not refresh account balances for item ${itemId}:`, balErr?.response?.data?.error_message || balErr.message);
   }
+
+  return { added: addedCount, modified: modifiedCount, removed: removedCount };
 }
 
 // 3. Manual Sync All Connected Accounts Endpoint
@@ -334,15 +419,38 @@ router.post('/sync', async (req, res) => {
         0
       );
 
-      return res.json({ success: true, message: 'Mock sync completed: Added 1 new transaction.', syncedItemsCount: items.length });
+      return res.json({ 
+        success: true, 
+        added: 1, 
+        modified: 0, 
+        removed: 0, 
+        message: 'Mock sync completed: Added 1 new transaction.', 
+        syncedItemsCount: items.length 
+      });
     }
+
+    let totalAdded = 0;
+    let totalModified = 0;
+    let totalRemoved = 0;
 
     for (const item of items) {
-      await syncTransactionsForItem(item.item_id, item.access_token);
+      const result = await syncTransactionsForItem(item.item_id, item.access_token);
+      if (result) {
+        totalAdded += result.added || 0;
+        totalModified += result.modified || 0;
+        totalRemoved += result.removed || 0;
+      }
     }
 
-    res.json({ success: true, message: `Synced ${items.length} accounts successfully.` });
+    res.json({ 
+      success: true, 
+      added: totalAdded, 
+      modified: totalModified, 
+      removed: totalRemoved, 
+      message: `Synced ${items.length} accounts: ${totalAdded} added, ${totalModified} updated, ${totalRemoved} removed.` 
+    });
   } catch (error) {
+    console.error('Sync failed:', error);
     res.status(500).json({ error: 'Sync failed', details: error.message });
   }
 });

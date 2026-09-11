@@ -21,12 +21,13 @@ export function initDatabase() {
       institution_name TEXT NOT NULL,
       institution_id TEXT,
       client_id TEXT,
+      cursor TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  // Migration check: Add client_id column to plaid_items if missing
+  // Migration check: Add client_id and cursor columns to plaid_items if missing
   try {
     const itemTableInfo = db.prepare(`PRAGMA table_info(plaid_items)`).all();
     const hasClientId = itemTableInfo.some(col => col.name === 'client_id');
@@ -34,8 +35,13 @@ export function initDatabase() {
       db.exec(`ALTER TABLE plaid_items ADD COLUMN client_id TEXT;`);
       console.log('Added "client_id" column to plaid_items table.');
     }
+    const hasCursor = itemTableInfo.some(col => col.name === 'cursor');
+    if (!hasCursor) {
+      db.exec(`ALTER TABLE plaid_items ADD COLUMN cursor TEXT;`);
+      console.log('Added "cursor" column to plaid_items table.');
+    }
   } catch (err) {
-    console.error('Error checking client_id column in plaid_items:', err.message);
+    console.error('Error checking columns in plaid_items:', err.message);
   }
 
   // 2. Accounts table

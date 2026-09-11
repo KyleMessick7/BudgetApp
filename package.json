@@ -9,6 +9,9 @@
     "server": "node server/index.js",
     "client": "npm run dev --prefix client",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "nicegui": "py -3.9 client-nicegui/main.py",
+    "dev:nicegui": "concurrently \"npm run server\" \"py -3.9 client-nicegui/main.py\"",
+    "dev:all": "concurrently \"npm run server\" \"npm run client\" \"py -3.9 client-nicegui/main.py\"",
     "build": "npm run build --prefix client"
   },
   "keywords": [
